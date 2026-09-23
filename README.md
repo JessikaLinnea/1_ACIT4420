@@ -1,18 +1,29 @@
-Smart Fitness Session Analyzer — Option A
-How to run
+# Smart Fitness Session Analyzer — Option A
 
-Make sure all three Python files are in the same folder, then run:
+This program analyzes fitness sensor data and classifies a workout session based on the readings.
 
-python3 run_generated_scenarios.py
+## Files
 
-The program will run all the scenarios from data_generator.py and print the results.
+* `fitness_session_analyzer.py` — contains the classes and analysis logic.
+* `run_generated_scenarios.py` — runs and tests all scenarios.
+* `data_generator.py` — provided by the instructor.
 
-How it works
+## How to Run
 
-The program analyzes fitness data such as heart rate, skin response, temperature, and activity level.
+Make sure all three files are in the same folder, then run:
 
-It uses classes for the participant, their normal reference measurements, observations, and the fitness session. Each observation is checked before being used. If a reading is missing data or has an invalid value, it is rejected and the reason is saved.
+`python3 run_generated_scenarios.py`
 
-The valid readings are then analyzed and compared with the participant's normal values. The session is classified as resting, moderate activity, high activity, recovering, or insufficient data.
+## How It Works
 
-Five scenarios are tested: resting, moderate activity, high activity, recovery, and poor quality. The poor-quality scenario gives insufficient data because the readings are invalid.
+The program checks sensor data such as heart rate, skin response, temperature, and activity level. Invalid readings are rejected and the reason is saved.
+
+Valid readings are compared with the participant's normal measurements. The program then classifies the session as:
+
+* Resting
+* Moderate activity
+* High activity
+* Recovering
+* Insufficient data
+
+The program tests all five scenarios provided by the data generator. The poor-quality scenario gives **insufficient data** because its readings are invalid.
