@@ -2,7 +2,7 @@ from data_generator import available_scenarios, generate_fitness_data
 from fitness_session_analyzer import FitnessSession, Participant, ReferenceMeasurements, report
 
 
-# Create a participant with their baseline measures.
+# Create a participant with their baseline measurements.
 def build_participant(profile):
     reference = ReferenceMeasurements(
         profile["baseline_heart_rate"],
@@ -12,7 +12,7 @@ def build_participant(profile):
     return Participant(profile["participant_id"], reference)
 
 
-# Generate a scenario, analyze the data, and print the results.
+# Generate and analyze one fitness scenario.
 def run_scenario(scenario, seed=42, number_of_windows=12):
     profile, observations = generate_fitness_data(
         participant_id="P001",
@@ -20,12 +20,16 @@ def run_scenario(scenario, seed=42, number_of_windows=12):
         seed=seed,
         number_of_windows=number_of_windows,
     )
+
     session = FitnessSession(build_participant(profile), scenario)
+
     for observation in observations:
         session.add(observation)
+
     report(session.analyse())
 
 
+# Run all available scenarios.
 def main():
     for scenario in available_scenarios():
         run_scenario(scenario)
