@@ -3,7 +3,7 @@ from statistics import mean
 FIELDS = ("timestamp", "heart_rate", "skin_response", "temperature", "activity_level", "signal_quality")
 
 
-# Return a reason a reading is unusable, or None if it's fine.
+# Check if the sensor data is valid.
 def validate(data):
     missing = []
     for field in FIELDS:
@@ -32,36 +32,47 @@ def validate(data):
     return None
 
 
-# Average/min/max for each measured field.
+# Calculate the average, minimum, and maximum for each measurement.
 def summary(readings):
     result = {}
+
     for field in FIELDS[1:]:
-        values = [getattr(r, field) for r in readings]
-        result[field] = {"avg": round(mean(values), 2), "min": min(values), "max": max(values)}
+        values = [getattr(reading, field) for reading in readings]
+
+        result[field] = {
+            "avg": round(mean(values), 2),
+            "min": min(values),
+            "max": max(values),
+        }
+
     return result
 
-
-# Difference between session averages and the participant's baseline.
+# Compare session averages with the participant's baseline.
 def compare(data, reference):
     result = {}
     for field, baseline in reference.values().items():
         result[field] = round(data[field]["avg"] - baseline, 2)
     return result
 
-
-# True if heart rate and activity both drop near the session's end.
+# Check if heart rate and activity decrease at the end of the session.
 def recovery(readings):
     if len(readings) < 4:
         return False
-    n = max(1, len(readings) // 3)
-    before = readings[-2 * n:-n]
-    end = readings[-n:]
-    heart_rate_drop = mean(r.heart_rate for r in before) - mean(r.heart_rate for r in end)
-    activity_drop = mean(r.activity_level for r in before) - mean(r.activity_level for r in end)
-    return heart_rate_drop >= 8 and activity_drop >= .15
 
+    section_size = max(1, len(readings) // 3)
+    before = readings[-2 * section_size:-section_size]
+    end = readings[-section_size:]
 
-# Label a session from its averages, baseline diff, and recovery flag.
+    heart_rate_drop = mean(reading.heart_rate for reading in before) - mean(
+        reading.heart_rate for reading in end
+    )
+    activity_drop = mean(reading.activity_level for reading in before) - mean(
+        reading.activity_level for reading in end
+    )
+    return heart_rate_drop >= 8 and activity_drop >= 0.15
+
+    
+# Classify the fitness session based on the analyzed data.
 def classify(data, diff, is_recovering):
     if is_recovering:
         return "recovering", "heart rate and activity fell near the end"
@@ -72,11 +83,12 @@ def classify(data, diff, is_recovering):
     return "moderate activity", "activity is above the resting range"
 
 
-# A participant's personal baseline; heart_rate is validated via a property.
+# Store the participant's baseline measurements.
 class ReferenceMeasurements:
     def __init__(self, heart_rate, skin_response, temperature):
         self.heart_rate = heart_rate
-        self.skin_response, self.temperature = skin_response, temperature
+        self.skin_response = skin_response
+        self.temperature = temperature
 
     @property
     def heart_rate(self):
@@ -85,17 +97,21 @@ class ReferenceMeasurements:
     @heart_rate.setter
     def heart_rate(self, value):
         if not 30 <= value <= 150:
-            raise ValueError("baseline heart rate must be 30–150")
+            raise ValueError("baseline heart rate must be between 30 and 150")
         self._heart_rate = value
 
     def values(self):
-        return {"heart_rate": self._heart_rate, "skin_response": self.skin_response, "temperature": self.temperature}
+        return {
+            "heart_rate": self.heart_rate,
+            "skin_response": self.skin_response,
+            "temperature": self.temperature,
+        }
 
-
-# Composition: a participant owns their reference measurements.
+# Store the participant and their reference measurements.
 class Participant:
     def __init__(self, name, reference):
-        self.name, self.reference = name, reference
+        self.name = name
+        self.reference = reference
 
 
 # A usable reading. from_dict() routes invalid data to RejectedObservation.
@@ -114,7 +130,7 @@ class Observation:
         return True
 
 
-# Inheritance: overrides usable() for readings that failed validation.
+# Represents an observation that failed validation.
 class RejectedObservation(Observation):
     def __init__(self, reason):
         self.reason = reason
@@ -123,60 +139,82 @@ class RejectedObservation(Observation):
         return False
 
 
-# Composition: groups a participant with their observations.
+# Store a participant and their fitness observations.
 class FitnessSession:
     MIN_READINGS = 3
 
     def __init__(self, participant, name):
-        self.participant, self.name, self.observations = participant, name, []
+        self.participant = participant
+        self.name = name
+        self.observations = []
 
     def add(self, data):
         self.observations.append(Observation.from_dict(data))
 
     def analyse(self):
-        good = []
-        bad = []
-        for r in self.observations:
-            if r.usable():
-                good.append(r)
+        usable = []
+        rejected = []
+
+        for observation in self.observations:
+            if observation.usable():
+                usable.append(observation)
             else:
-                bad.append(r.reason)
-        good.sort(key=lambda r: r.timestamp)
+                rejected.append(observation.reason)
 
-        result = {"session": self.name, "usable": len(good), "rejected": bad}
+        usable.sort(key=lambda observation: observation.timestamp)
 
-        if len(good) < self.MIN_READINGS:
+        result = {
+            "session": self.name,
+            "usable": len(usable),
+            "rejected": rejected,
+        }
+
+        if len(usable) < self.MIN_READINGS:
             result["classification"] = "insufficient data"
             result["reason"] = "fewer than 3 usable readings"
             result["summary"] = {}
             return result
 
-        data = summary(good)
-        diff = compare(data, self.participant.reference)
-        label, reason = classify(data, diff, recovery(good))
+        data = summary(usable)
+        difference = compare(data, self.participant.reference)
+        is_recovering = recovery(usable)
+        label, reason = classify(data, difference, is_recovering)
 
         result["classification"] = label
         result["reason"] = reason
         result["summary"] = data
-        result["reference_difference"] = diff
+        result["reference_difference"] = difference
+
         return result
 
 
-# Print the structured result as a readable report.
+# Print the analysis results.
 def report(result):
     print(f"\n{result['session']}: {result['classification']}")
-    print(f"Usable observations: {result['usable']} | Reason: {result['reason']}")
+    print(f"Usable observations: {result['usable']}")
+    print(f"Reason: {result['reason']}")
+
     if result["summary"]:
-        hr = result["summary"]["heart_rate"]
-        print(f"Heart rate — average: {hr['avg']}, min: {hr['min']}, max: {hr['max']}")
+        heart_rate = result["summary"]["heart_rate"]
+        print(
+            f"Heart rate - average: {heart_rate['avg']}, "
+            f"min: {heart_rate['min']}, max: {heart_rate['max']}"
+        )
+
     if result["rejected"]:
         print("Rejected: " + "; ".join(result["rejected"]))
 
 
-# Build one simulated reading, with sensible defaults for the rest.
-def reading(time, heart_rate, activity, quality=.95):
-    return {"timestamp": time, "heart_rate": heart_rate, "skin_response": 2.5,
-            "temperature": 32.9, "activity_level": activity, "signal_quality": quality}
+# Create a simulated sensor reading.
+def reading(time, heart_rate, activity, quality=0.95):
+    return {
+        "timestamp": time,
+        "heart_rate": heart_rate,
+        "skin_response": 2.5,
+        "temperature": 32.9,
+        "activity_level": activity,
+        "signal_quality": quality,
+    }
 
 
 # Run the five demo scenarios and print each report.
