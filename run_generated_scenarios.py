@@ -1,11 +1,8 @@
-"""Run the Smart Fitness Session Analyzer against the instructor-supplied
-data generator, covering every scenario it can produce."""
-
 from data_generator import available_scenarios, generate_fitness_data
 from fitness_session_analyzer import FitnessSession, Participant, ReferenceMeasurements, report
 
 
-# Turn a generator profile dict into our Participant + ReferenceMeasurements objects.
+# Create a participant with their baseline measures.
 def build_participant(profile):
     reference = ReferenceMeasurements(
         profile["baseline_heart_rate"],
@@ -15,7 +12,7 @@ def build_participant(profile):
     return Participant(profile["participant_id"], reference)
 
 
-# Generate one scenario's data, run it through the analyzer, and print the report.
+# Generate a scenario, analyze the data, and print the results.
 def run_scenario(scenario, seed=42, number_of_windows=12):
     profile, observations = generate_fitness_data(
         participant_id="P001",
